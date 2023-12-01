@@ -1,0 +1,140 @@
+Telegram Open Network Blockchain
+Nikolai Durov
+February 8, 2020
+Abstract
+The aim of this text is to provide a detailed description of the
+Telegram Open Network (TON) Blockchain.
+Introduction
+This document provides a detailed description of the TON Blockchain, including its precise block format, validity conditions, TON Virtual Machine
+(TVM) invocation details, smart-contract creation process, and cryptographic
+signatures. In this respect it is a continuation of the TON whitepaper (cf. [3]),
+so we freely use the terminology introduced in that document.
+Chapter 1 provides a general overview of the TON Blockchain and its design principles, with particular attention to the introduction of compatibility
+and validity conditions and the implementation of message delivery guarantees. More detailed information, such as the TL-B schemes that describe the
+serialization of all required data structures into trees or collections (“bags”)
+of cells, is provided in subsequent chapters, culminating in a complete description of the TON Blockchain (shardchain and masterchain) block layout
+in Chapter 5.
+A detailed description of the elliptic curve cryptography used for signing
+blocks and messages, also accessible through TVM primitives, is provided in
+Appendix A. TVM itself is described in a separate document (cf. [4]).
+Some subjects have intentionally been left out of this document. One is
+the Byzantine Fault Tolerant (BFT) protocol used by the validators to determine the next block of the masterchain or a shardchain; that subject is left
+for a forthcoming document dedicated to the TON Network. And although
+1
+Introduction
+this document describes the precise format of TON Blockchain blocks, and
+discusses the blockchain’s validity conditions and serialized invalidity proofs,1
+it provides no details about the network protocols used to propagate these
+blocks, block candidates, collated blocks, and invalidity proofs.
+Similarly, this document does not provide the complete source code of
+the masterchain smart contracts used to elect the validators, change the configurable parameters or get their current values, or punish the validators
+for their misbehavior, even though these smart contracts form an important
+part of the total blockchain state and of the masterchain block zero. Instead,
+this document describes the location of these smart contracts and their formal interfaces.2 The source code of these smart contracts will be provided
+separately as downloadable files with comments.
+Please note that the current version of this document describes a preliminary test version of the TON Blockchain; some minor details are likely
+to change prior to launch during the development, testing, and deployment
+phases.
+1As of August 2018, this document does not include a detailed description of serialized
+invalidity proofs, because they are likely to change significantly during the development of
+the validator software. Only the general design principles for consistency conditions and
+serialized invalidity proofs are discussed.
+2This is not included in the present version of this document, but will be provided in
+a separate appendix to a future revision.
+2
+Introduction
+Contents
+1 Overview 4
+1.1 Everything is a bag of cells . . . . . . . . . . . . . . . . . . . . 4
+1.2 Principal components of a block and the blockchain state . . . 7
+1.3 Consistency conditions . . . . . . . . . . . . . . . . . . . . . . 12
+1.4 Logical time and logical time intervals . . . . . . . . . . . . . 21
+1.5 Total blockchain state . . . . . . . . . . . . . . . . . . . . . . 23
+1.6 Configurable parameters and smart contracts . . . . . . . . . . 24
+1.7 New smart contracts and their addresses . . . . . . . . . . . . 27
+1.8 Modification and removal of smart contracts . . . . . . . . . . 30
+2 Message forwarding and delivery guarantees 33
+2.1 Message addresses and next-hop computation . . . . . . . . . 33
+2.2 Hypercube Routing protocol . . . . . . . . . . . . . . . . . . . 40
+2.3 Instant Hypercube Routing and combined delivery guarantees 47
+3 Messages, message descriptors, and queues 53
+3.1 Address, currency, and message layout . . . . . . . . . . . . . 53
+3.2 Inbound message descriptors . . . . . . . . . . . . . . . . . . . 60
+3.3 Outbound message queue and descriptors . . . . . . . . . . . . 65
+4 Accounts and transactions 69
+4.1 Accounts and their states . . . . . . . . . . . . . . . . . . . . . 69
+4.2 Transactions . . . . . . . . . . . . . . . . . . . . . . . . . . . . 75
+4.3 Transaction descriptions . . . . . . . . . . . . . . . . . . . . . 83
+4.4 Invoking smart contracts in TVM . . . . . . . . . . . . . . . . 89
+5 Block layout 96
+5.1 Shardchain block layout . . . . . . . . . . . . . . . . . . . . . 96
+5.2 Masterchain block layout . . . . . . . . . . . . . . . . . . . . . 101
+5.3 Serialization of a bag of cells . . . . . . . . . . . . . . . . . . . 104
+A Elliptic curve cryptography 112
+A.1 Elliptic curves . . . . . . . . . . . . . . . . . . . . . . . . . . . 112
+A.2 Curve25519 cryptography . . . . . . . . . . . . . . . . . . . . 116
+A.3 Ed25519 cryptography . . . . . . . . . . . . . . . . . . . . . . 118
+3
+1.1. Everything is a bag of cells
+1 Overview
+This chapter provides an overview of the main features and design principles
+of the TON Blockchain. More detail on each topic is provided in subsequent
+chapters.
+1.1 Everything is a bag of cells
+All data in the blocks and state of the TON Blockchain is represented as a
+collection of cells (cf. [3, 2.5]). Therefore, this chapter begins with a general
+discussion of cells.
+1.1.1. TVM cells. Recall that the TON Blockchain, as well as the TON
+Virtual Machine (TVM; cf. [4]), represents all permanently stored data as a
+collection or bag of so-called cells. Each cell consists of up to 1023 data bits
+and up to four references to other cells. Cyclic cell references are not allowed,
+so the cells are usually organized into trees of cells, or rather directed acyclic
+graphs (DAGs) of cells.
+3 Any value of an abstract algebraic (dependent) data
+type may be represented (serialized) as a tree of cells. The precise way of
+representing values of an abstract data type as a tree of cells is expressed by
+means of a TL-B scheme.
+4 A more thorough discussion of different kinds of
+cells may be found in [4, 3.1].
+1.1.2. Application to TON Blockchain blocks and state. The above is
+particularly applicable to the blocks and state of the TON Blockchain, which
+also are values of certain (quite convoluted) dependent algebraic data types.
+Therefore, they are serialized according to various TL-B schemes (which are
+gradually presented throughout this document), and are represented as a
+collection or bag of cells.
+1.1.3. The layout of a single cell. Each single cell consists of up to
+1023 data bits and up to four references to other cells. When a cell is kept
+in memory, its exact representation is implementation-dependent. However,
+3Completely identical cells are often identified in memory and in disk storage; this is
+the reason why trees of cells are transparently transformed into DAGs of cells. From this
+perspective, a DAG is just a storage optimization of the underlying tree of cells, irrelevant
+for most considerations.
+4Cf. [4, 3.3.3–4], where an example is given and explained, pending a more complete
+reference
+4
+1.1. Everything is a bag of cells
+there is a standard representation of cells, useful, for instance, for serializing
+cells for file storage or network transmission. This “standard representation”
+or “standard layout” CellRepr(c) of a cell c consists of the following:
+• Two descriptor bytes come first, sometimes denoted by d1 and d2. The
+first of these bytes d1 equals (in the simplest case) the number of references 0 ≤ r ≤ 4 in the cell. The second descriptor byte d2 encodes the
+bit length l of the data part of the cell as follows: the first seven bits of
+d2 equal bl/8c, the number of complete data bytes present in the cell,
+while the last bit of d2 is the completion tag, equal to one if l is not
+divisible by eight. Therefore,
+d2 = 2bl/8c + [l mod 8 6= 0] = bl/8c + dl/8e (1)
+where [A] equals one when condition A is true, and zero otherwise.
+• Next, dl/8e data bytes follow. This means that the l data bits of the
+cell are split into groups of eight, and each group is interpreted as a
+big-endian 8-bit integer and stored into a byte. If l is not divisible by
+eight, a single binary one and a suitable number of binary zeroes (up
+to six) are appended to the data bits, and the completion tag (the least
+significant bit of the descriptor byte d2) is set.
+• Finally, r references to other cells follow. Each reference is normally
+represented by 32 bytes containing the sha256 hash of the referenced
+cell, computed as explained below in 1.1.4.
+In this way, the standard representation CellRepr(c) of a cell c with l data
+bits and r references is 2 + bl/8c + dl/8e + 32r bytes long.
+1.1.4. The sha256 hash of a cell. The sha256 hash of a cell c is recursively defined as the sha256 of the standard representation CellRepr(c)
+of the cell in question:
+Hash(c) := sha256(c) := sha256
